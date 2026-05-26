@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>뜻밖의 뜻 — 시선 추적 리더</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="https://webgazer.cs.brown.edu/webgazer.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/webgazer@2.1.0/dist/webgazer.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@300;400;500&family=Noto+Sans+KR:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -436,12 +436,15 @@ function startCalibration() {
   overlay.style.display = 'block';
 
   // WebGazer 시작
-  webgazer.setGazeListener(() => {}).begin().then(() => {
-    webgazer.showVideoPreview(true).showPredictionPoints(false);
-  }).catch(err => {
+  try {
+    webgazer.setGazeListener(() => {});
+    webgazer.begin();
+    webgazer.showVideoPreview(true);
+    webgazer.showPredictionPoints(false);
+  } catch(err) {
     alert('웹캠 접근 실패: ' + err.message);
     overlay.style.display = 'none';
-  });
+  }
 
   // 9개 보정 점 (3x3 그리드)
   const positions = [];
