@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>뜻밖의 뜻 — 시선 추적 리더</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://webgazer.cs.brown.edu/webgazer.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@300;400;500&family=Noto+Sans+KR:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #f4f4f2; --surface: #eeede9; --border: #d6d4ce;
+  --text: #1c1c1a; --text2: #5a5a56; --text3: #9a9890;
+  --popup-bg: #1e1e1c; --radius: 6px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Noto Sans KR', sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }
+
+/* ── 헤더 */
+.header { background: var(--text); color: #f4f4f2; padding: 0 24px; height: 52px; display: flex; align-items: center; gap: 16px; border-bottom: 1px solid #333; }
+.header-logo { font-family: 'Noto Serif KR', serif; font-size: 15px; font-weight: 500; }
+.header-logo span { color: #a0a09a; margin: 0 4px; }
+.et-badge { margin-left: auto; font-family: 'DM Mono', monospace; font-size: 10px; padding: 3px 10px; border-radius: 20px; border: 1px solid; white-space: nowrap; cursor: pointer; transition: all 0.2s; }
+.et-off  { color: #fcd34d; border-color: rgba(252,211,77,0.3);  background: rgba(252,211,77,0.08); }
+.et-on   { color: #6ee7b7; border-color: rgba(110,231,183,0.3); background: rgba(110,231,183,0.08); }
+.et-cal  { color: #fca5a5; border-color: rgba(252,165,165,0.3); background: rgba(252,165,165,0.08); }
+
+/* ── 레이아웃 */
+.body { display: flex; height: calc(100vh - 52px); }
+.sidebar { width: 220px; min-width: 220px; background: var(--surface); border-right: 1px solid var(--border); padding: 18px 14px; display: flex; flex-direction: column; gap: 16px; overflow-y: auto; }
+.section-label { font-size: 9px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text3); margin-bottom: 8px; }
+.reader { flex: 1; overflow-y: auto; padding: 36px 56px; position: relative; }
+
+/* ── 컨트롤 버튼 */
+.btn { font-family: 'Noto Sans KR', sans-serif; font-size: 11px; font-weight: 500; border: none; border-radius: var(--radius); padding: 8px 14px; cursor: pointer; transition: all 0.15s; width: 100%; text-align: center; margin-bottom: 6px; }
+.btn-dark  { background: var(--text); color: var(--bg); }
+.btn-dark:hover { opacity: 0.8; }
+.btn-light { background: var(--border); color: var(--text); }
+.btn-light:hover { background: #c4c2bb; }
+.btn-red   { background: #9b1c1c; color: white; }
+.btn-red:hover { background: #7a1515; }
+.btn-green { background: #2d6a4f; color: white; }
+.btn-green:hover { background: #1e4d38; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── 상태 패널 */
+.status-box { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; font-size: 11px; color: var(--text2); line-height: 1.7; }
+.status-box .val { font-family: 'DM Mono', monospace; color: var(--text); font-weight: 500; }
+
+/* ── 텍스트 입력 */
+#textInput { width: 100%; min-height: 120px; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius); font-family: 'Noto Serif KR', serif; font-size: 16px; line-height: 1.9; background: white; color: var(--text); resize: vertical; margin-bottom: 10px; outline: none; }
+#textInput:focus { border-color: var(--text2); }
+
+/* ── 읽기 영역 */
+#readingArea { max-width: 700px; margin: 0 auto; }
+.sentence-block { display: block; margin-bottom: 6px; line-height: 2.2; position: relative; border-radius: 4px; padding: 2px 4px; transition: background 0.2s; }
+.word-span { font-family: 'Noto Serif KR', serif; font-size: 17px; display: inline; cursor: pointer; border-radius: 2px; padding: 1px 0; transition: background 0.12s; }
+.word-span:hover { background: rgba(0,0,0,0.06); }
+.word-span.grade-초급 { border-bottom: 1.5px solid rgba(45,106,79,0.55); }
+.word-span.grade-중급 { border-bottom: 1.5px solid rgba(180,83,9,0.55); }
+.word-span.grade-고급 { border-bottom: 1.5px solid rgba(155,28,28,0.7); }
+.word-span.grade-loading { border-bottom: 1.5px dotted #ccc; }
+.josa { font-family: 'Noto Serif KR', serif; font-size: 17px; color: var(--text2); }
+
+/* ── 시선 히트맵 오버레이 */
+.gaze-heat { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; border-radius: 4px; transition: background 0.3s; }
+
+/* ── 시선 커서 */
+#gazeCursor { position: fixed; width: 20px; height: 20px; border-radius: 50%; background: rgba(155,28,28,0.35); border: 2px solid rgba(155,28,28,0.7); pointer-events: none; transform: translate(-50%,-50%); z-index: 9990; display: none; transition: left 0.05s, top 0.05s; }
+
+/* ── 팝업 */
+#popup { display: none; position: fixed; z-index: 9999; background: var(--popup-bg); color: #e8e8e4; border-radius: 8px; padding: 14px 18px; min-width: 230px; max-width: 310px; box-shadow: 0 12px 40px rgba(0,0,0,0.35); border: 1px solid #2e2e2c; font-family: 'Noto Sans KR', sans-serif; }
+.popup-word { font-family: 'Noto Serif KR', serif; font-size: 20px; font-weight: 500; color: #f4f4f2; margin-bottom: 8px; }
+.popup-grade { font-family: 'DM Mono', monospace; font-size: 9px; padding: 2px 7px; border-radius: 10px; margin-right: 6px; }
+.g-초급 { background: rgba(45,106,79,0.2); color: #6ee7b7; border: 1px solid rgba(45,106,79,0.4); }
+.g-중급 { background: rgba(180,83,9,0.2);  color: #fbbf24; border: 1px solid rgba(180,83,9,0.4); }
+.g-고급 { background: rgba(155,28,28,0.2); color: #fca5a5; border: 1px solid rgba(155,28,28,0.4); }
+.g-unknown { background: rgba(150,150,150,0.15); color: #888; border: 1px solid rgba(150,150,150,0.3); }
+.popup-pos { font-size: 10px; color: #666; }
+.popup-def { font-size: 12.5px; line-height: 1.7; color: #d0d0cc; border-top: 1px solid #2e2e2c; padding-top: 8px; margin-top: 8px; }
+.popup-ex  { font-size: 11px; color: #777; margin-top: 4px; }
+.popup-ex::before { content: '예) '; color: #555; }
+.popup-close { float: right; background: none; border: none; color: #555; cursor: pointer; font-size: 14px; }
+.popup-gaze-time { font-family: 'DM Mono', monospace; font-size: 10px; color: #6ee7b7; margin-top: 6px; }
+
+/* ── 리포트 패널 */
+#reportPanel { display: none; background: white; border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-top: 24px; max-width: 700px; margin-left: auto; margin-right: auto; }
+.report-title { font-size: 14px; font-weight: 600; margin-bottom: 14px; color: var(--text); border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+.report-section { margin-bottom: 18px; }
+.report-section-title { font-size: 11px; font-weight: 500; letter-spacing: 0.08em; color: var(--text3); text-transform: uppercase; margin-bottom: 8px; }
+.rank-item { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+.rank-n { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--text3); width: 20px; }
+.rank-word { font-family: 'Noto Serif KR', serif; font-size: 14px; flex: 1; }
+.rank-bar-wrap { flex: 2; background: var(--surface); border-radius: 20px; height: 6px; overflow: hidden; }
+.rank-bar { height: 100%; border-radius: 20px; background: #9b1c1c; transition: width 0.6s; }
+.rank-time { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--text2); width: 50px; text-align: right; }
+.sentence-rank-item { padding: 8px 10px; border-left: 3px solid var(--border); margin-bottom: 6px; font-size: 12px; line-height: 1.6; background: var(--bg); border-radius: 0 4px 4px 0; }
+.sentence-rank-item.hot { border-left-color: #9b1c1c; background: rgba(155,28,28,0.04); }
+
+/* ── 히트맵 캔버스 */
+#heatmapCanvas { position: absolute; top: 0; left: 0; pointer-events: none; opacity: 0.5; border-radius: 4px; }
+
+/* ── 보정 오버레이 */
+#calibOverlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 99999; }
+.calib-title { color: white; text-align: center; font-size: 16px; padding-top: 40px; font-family: 'Noto Sans KR', sans-serif; }
+.calib-sub { color: #aaa; text-align: center; font-size: 12px; margin-top: 8px; font-family: 'Noto Sans KR', sans-serif; }
+.calib-dot { position: absolute; width: 28px; height: 28px; border-radius: 50%; background: #f0c040; border: 3px solid white; cursor: pointer; transform: translate(-50%,-50%); transition: transform 0.15s, background 0.15s; box-shadow: 0 0 12px rgba(240,192,64,0.6); }
+.calib-dot:hover { transform: translate(-50%,-50%) scale(1.3); background: #fff; }
+.calib-dot.done { background: #6ee7b7; }
+#calibProgress { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); color: white; font-family: 'DM Mono', monospace; font-size: 12px; }
+
+.spinner { display: inline-block; width: 10px; height: 10px; border: 1.5px solid #444; border-top-color: #aaa; border-radius: 50%; animation: spin 0.6s linear infinite; vertical-align: middle; margin-right: 4px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+.tabs { display: flex; background: #2c2a24; padding: 0 24px; }
+.tab { font-family: 'Noto Sans KR', sans-serif; font-size: 12px; padding: 8px 16px; cursor: pointer; color: #888; border-bottom: 2px solid transparent; transition: all 0.2s; }
+.tab.active { color: #f0c040; border-bottom-color: #f0c040; }
+</style>
+</head>
+<body>
+
+<div id="gazeCursor"></div>
+
+<!-- 보정 오버레이 -->
+<div id="calibOverlay">
+  <div class="calib-title">👁️ 시선 보정 (Calibration)</div>
+  <div class="calib-sub">각 점을 클릭하세요. 모든 점을 클릭하면 보정이 완료됩니다.</div>
+  <div id="calibDots"></div>
+  <div id="calibProgress">0 / 9 완료</div>
+</div>
+
+<div class="header">
+  <div class="header-logo">뜻밖의 뜻<span>/</span>시선 추적 리더</div>
+  <div style="font-size:11px;color:#888;font-family:'Noto Sans KR',sans-serif;">읽는 그 순간, 뜻이 뜬다</div>
+  <div class="et-badge et-off" id="etBadge" onclick="toggleEyeTracking()">● 시선추적 OFF</div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('input')">텍스트 입력</div>
+  <div class="tab" onclick="switchTab('read')">읽기 + 시선추적</div>
+  <div class="tab" onclick="switchTab('report')">분석 리포트</div>
+</div>
+
+<div class="body">
+  <aside class="sidebar">
+    <div>
+      <div class="section-label">👁️ 시선 추적</div>
+      <button class="btn btn-dark" onclick="startCalibration()">보정 시작 (9점)</button>
+      <button class="btn btn-green" id="btnStartTrack" onclick="startTracking()" disabled>추적 시작</button>
+      <button class="btn btn-red"   id="btnStopTrack"  onclick="stopTracking()"  disabled>추적 중지 + 리포트</button>
+    </div>
+
+    <div>
+      <div class="section-label">📊 실시간 상태</div>
+      <div class="status-box">
+        <div>보정 상태: <span class="val" id="stCalib">미완료</span></div>
+        <div>추적 상태: <span class="val" id="stTrack">대기중</span></div>
+        <div>추적 단어수: <span class="val" id="stWords">0</span></div>
+        <div>경과 시간: <span class="val" id="stTime">0s</span></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-label">🎨 어휘 등급</div>
+      <div style="display:flex;flex-direction:column;gap:5px;">
+        <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text2);">
+          <div style="width:8px;height:8px;border-radius:50%;background:#2d6a4f;"></div>초급
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text2);">
+          <div style="width:8px;height:8px;border-radius:50%;background:#b45309;"></div>중급
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text2);">
+          <div style="width:8px;height:8px;border-radius:50%;background:#9b1c1c;"></div>고급
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-label">💡 사용 방법</div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <div style="display:flex;gap:8px;font-size:10.5px;color:var(--text2);line-height:1.5;">
+          <div style="width:16px;height:16px;border-radius:50%;background:var(--text);color:var(--bg);display:flex;align-items:center;justify-content:center;font-size:8px;flex-shrink:0;font-family:'DM Mono',monospace;">1</div>
+          텍스트 입력 탭에서 글 붙여넣기
+        </div>
+        <div style="display:flex;gap:8px;font-size:10.5px;color:var(--text2);line-height:1.5;">
+          <div style="width:16px;height:16px;border-radius:50%;background:var(--text);color:var(--bg);display:flex;align-items:center;justify-content:center;font-size:8px;flex-shrink:0;font-family:'DM Mono',monospace;">2</div>
+          보정 시작 → 9개 점 클릭
+        </div>
+        <div style="display:flex;gap:8px;font-size:10.5px;color:var(--text2);line-height:1.5;">
+          <div style="width:16px;height:16px;border-radius:50%;background:var(--text);color:var(--bg);display:flex;align-items:center;justify-content:center;font-size:8px;flex-shrink:0;font-family:'DM Mono',monospace;">3</div>
+          추적 시작 → 글 읽기
+        </div>
+        <div style="display:flex;gap:8px;font-size:10.5px;color:var(--text2);line-height:1.5;">
+          <div style="width:16px;height:16px;border-radius:50%;background:var(--text);color:var(--bg);display:flex;align-items:center;justify-content:center;font-size:8px;flex-shrink:0;font-family:'DM Mono',monospace;">4</div>
+          추적 중지 → 리포트 확인
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="reader" id="mainReader">
+
+    <!-- 텍스트 입력 탭 -->
+    <div class="tab-content active" id="tab-input">
+      <textarea id="textInput" placeholder="여기에 읽을 글을 붙여넣어 주세요.
+
+예시) 인공지능은 인간의 지능을 모방하여 학습, 추론, 인식 등의 기능을 수행하는 컴퓨터 시스템이다. 최근 딥러닝 기술의 발전으로 다양한 분야에서 눈부신 성과를 거두고 있다. 특히 자연어 처리 분야에서 트랜스포머 아키텍처를 기반으로 한 대형 언어 모델이 주목받고 있다. 이러한 기술의 발전은 사회 전반에 큰 변화를 예고하고 있다."></textarea>
+      <button class="btn btn-dark" style="width:auto;padding:9px 22px;" onclick="prepareReading()">분석 시작 → 읽기 모드</button>
+      <div style="font-size:11px;color:var(--text3);margin-top:10px;line-height:1.7;">
+        단어 클릭 시 뜻 팝업 · 시선 추적 시 어떤 단어에 오래 머무는지 분석됩니다.
+      </div>
+    </div>
+
+    <!-- 읽기 + 시선추적 탭 -->
+    <div class="tab-content" id="tab-read">
+      <div style="position:relative;">
+        <canvas id="heatmapCanvas"></canvas>
+        <div id="readingArea"></div>
+      </div>
+    </div>
+
+    <!-- 리포트 탭 -->
+    <div class="tab-content" id="tab-report">
+      <div id="reportPanel">
+        <div class="report-title">👁️ 시선 추적 분석 리포트</div>
+
+        <div class="report-section">
+          <div class="report-section-title">📊 전체 통계</div>
+          <div class="status-box" id="reportStats"></div>
+        </div>
+
+        <div class="report-section">
+          <div class="report-section-title">🔴 시선 오래 머문 단어 TOP 10</div>
+          <div id="wordRankList"></div>
+        </div>
+
+        <div class="report-section">
+          <div class="report-section-title">📄 문장별 난이도 추정 (시선 체류 시간 기준)</div>
+          <div id="sentenceRankList"></div>
+        </div>
+
+        <div class="report-section">
+          <div class="report-section-title">💡 학습 인사이트</div>
+          <div id="insightBox" style="font-size:12px;line-height:1.8;color:var(--text2);background:var(--bg);padding:12px;border-radius:var(--radius);border:1px solid var(--border);"></div>
+        </div>
+      </div>
+      <div id="reportEmpty" style="color:var(--text3);font-size:13px;padding:40px;text-align:center;">
+        읽기 + 시선추적 탭에서 추적을 완료하면<br>리포트가 여기에 나타납니다.
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- 단어 팝업 -->
+<div id="popup">
+  <button class="popup-close" onclick="closePopup()">✕</button>
+  <div class="popup-word" id="p-word"></div>
+  <div style="margin-bottom:6px;">
+    <span class="popup-grade" id="p-grade"></span>
+    <span class="popup-pos"   id="p-pos"></span>
+  </div>
+  <div class="popup-def" id="p-def"></div>
+  <div class="popup-gaze-time" id="p-gaze"></div>
+</div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+const SERVER = (location.hostname==='localhost'||location.hostname==='127.0.0.1') ? 'http://localhost:5000' : '';
+
+// ── 전역 상태
+const cache = {};
+let gazeActive  = false;
+let calibDone   = false;
+let trackStart  = null;
+let timerInterval = null;
+
+// wordGaze: { stem → { ms: 누적ms, lastEnter: timestamp } }
+const wordGaze = {};
+// sentenceGaze: { idx → { ms: 누적ms, text: 문장 } }
+const sentenceGaze = {};
+
+// 히트맵 포인트 배열
+const gazePoints = [];
+
+// ── 탭 전환
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach((t,i) =>
+    t.classList.toggle('active', ['input','read','report'][i] === tab));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  document.getElementById('tab-'+tab).classList.add('active');
+}
+
+// ── 조사/어미 분리
+const JOSA=['으로부터는','으로부터도','로부터는','로부터도','으로부터','로부터','에서부터','에게서','한테서','으로서는','으로서도','로서는','로서도','으로서','로서','에서는','에서도','에서가','에서만','에게는','에게도','에게만','한테는','한테도','이라도','라도','이라면','라면','이라고','라고','이니까','니까','이지만','지만','이므로','므로','으로는','으로도','으로만','로는','로도','로만','이라는','라는','이란','란','에서','에게','한테','에는','에도','에만','부터','까지','마다','조차','마저','밖에','이라','이야','이랑','랑','으로','로','의','과','와','은','는','이','가','을','를','도','만','에','께','서','야','아'];
+const EOMI=['었습니다','았습니다','겠습니다','습니다','ㅂ니다','었습니까','았습니까','겠습니까','습니까','ㅂ니까','었으면','았으면','었지만','았지만','었는데','았는데','겠지만','겠는데','겠어요','겠어','었어요','았어요','었어','았어','어요','아요','지요','죠','었다','았다','겠다','는다','ㄴ다','으면','면','지만','는데','ㄴ데','어서','아서','어도','아도','으며','며','으니','니','으나','나','어','아','지','고','서'];
+function splitStem(w){for(const j of JOSA)if(w.length>j.length&&w.endsWith(j))return{stem:w.slice(0,-j.length),sfx:j};for(const e of EOMI)if(w.length>e.length&&w.endsWith(e))return{stem:w.slice(0,-e.length),sfx:e};return{stem:w,sfx:''};}
+
+// ── 사전 API
+async function fetchDict(word) {
+  if (cache[word]!==undefined) return cache[word];
+  try {
+    const r = await fetch(`${SERVER}/api/dict?q=${encodeURIComponent(word)}`, { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) { cache[word]=null; return null; }
+    const xml = new DOMParser().parseFromString(await r.text(), 'text/xml');
+    if (xml.querySelector('parsererror')||xml.querySelector('error')) { cache[word]=null; return null; }
+    const items = xml.querySelectorAll('item');
+    if (!items.length) { cache[word]=null; return null; }
+    const first = items[0];
+    const grade = first.querySelector('word_grade')?.textContent?.trim()||'';
+    const pos   = first.querySelector('pos')?.textContent?.trim()||'';
+    const senses=[];
+    xml.querySelectorAll('sense').forEach(s=>{
+      const def=s.querySelector('definition')?.textContent?.trim()||'';
+      const ex =s.querySelector('example')?.textContent?.trim()||'';
+      if(def) senses.push({def,ex});
+    });
+    cache[word]={grade,pos,senses};
+    return cache[word];
+  } catch { cache[word]=null; return null; }
+}
+
+// ── 텍스트 준비 & 렌더링
+function prepareReading() {
+  const text = document.getElementById('textInput').value.trim();
+  if (!text) return;
+  renderSentences(text);
+  switchTab('read');
+}
+
+function renderSentences(text) {
+  const area = document.getElementById('readingArea');
+  area.innerHTML = '';
+  // 문장 단위 분리 (마침표·물음표·느낌표 기준)
+  const sentences = text.match(/[^.!?。]+[.!?。]?/g) || [text];
+
+  sentences.forEach((sent, sIdx) => {
+    const block = document.createElement('span');
+    block.className = 'sentence-block';
+    block.dataset.sidx = sIdx;
+    sentenceGaze[sIdx] = { ms: 0, text: sent.trim(), lastEnter: null };
+
+    // 단어 토큰화
+    const re = /([가-힣a-zA-Z0-9]+)|([^가-힣a-zA-Z0-9])/g;
+    let m;
+    while ((m = re.exec(sent)) !== null) {
+      if (m[1]) {
+        const { stem, sfx } = splitStem(m[1]);
+        const sp = document.createElement('span');
+        sp.className = 'word-span grade-loading';
+        sp.textContent = stem;
+        sp.dataset.stem = stem;
+        sp.dataset.sidx = sIdx;
+        sp.onclick = e => { e.stopPropagation(); onWordClick(stem, e); };
+
+        // 시선 이벤트
+        sp.addEventListener('mouseenter', () => gazeEnterWord(stem));
+        sp.addEventListener('mouseleave', () => gazeLeaveWord(stem));
+
+        block.appendChild(sp);
+        if (sfx) {
+          const js = document.createElement('span');
+          js.className = 'josa'; js.textContent = sfx;
+          block.appendChild(js);
+        }
+        if (!wordGaze[stem]) wordGaze[stem] = { ms: 0, lastEnter: null };
+      } else {
+        block.appendChild(document.createTextNode(m[2]));
+      }
+    }
+    area.appendChild(block);
+
+    // 문장 블록 hover 이벤트
+    block.addEventListener('mouseenter', () => gazeEnterSentence(sIdx));
+    block.addEventListener('mouseleave', () => gazeLeaveSentence(sIdx));
+  });
+
+  // 히트맵 캔버스 크기 맞추기
+  const canvas = document.getElementById('heatmapCanvas');
+  setTimeout(() => {
+    canvas.width  = area.offsetWidth;
+    canvas.height = area.offsetHeight;
+  }, 100);
+
+  // 백그라운드 어휘 등급 조회
+  batchGrades(area);
+}
+
+async function batchGrades(area) {
+  const spans = [...area.querySelectorAll('.word-span')];
+  const stems = [...new Set(spans.map(s => s.dataset.stem).filter(Boolean))];
+  for (let i=0; i<stems.length; i++) {
+    const stem = stems[i];
+    const info = await fetchDict(stem);
+    area.querySelectorAll(`.word-span[data-stem="${CSS.escape(stem)}"]`).forEach(sp => {
+      sp.classList.remove('grade-loading');
+      sp.classList.add(info?.grade ? 'grade-'+info.grade : 'grade-unknown');
+    });
+    if (i%15===14) await new Promise(r=>setTimeout(r,10));
+  }
+}
+
+// ── 시선 체류 시간 기록 (마우스 기반 fallback + WebGazer 연동)
+function gazeEnterWord(stem) {
+  if (!gazeActive) return;
+  if (wordGaze[stem]) wordGaze[stem].lastEnter = Date.now();
+  document.getElementById('stWords').textContent =
+    Object.values(wordGaze).filter(v => v.ms > 0).length;
+}
+function gazeLeaveWord(stem) {
+  if (!gazeActive) return;
+  if (wordGaze[stem]?.lastEnter) {
+    wordGaze[stem].ms += Date.now() - wordGaze[stem].lastEnter;
+    wordGaze[stem].lastEnter = null;
+  }
+}
+function gazeEnterSentence(idx) {
+  if (!gazeActive) return;
+  if (sentenceGaze[idx]) sentenceGaze[idx].lastEnter = Date.now();
+}
+function gazeLeaveSentence(idx) {
+  if (!gazeActive) return;
+  if (sentenceGaze[idx]?.lastEnter) {
+    sentenceGaze[idx].ms += Date.now() - sentenceGaze[idx].lastEnter;
+    sentenceGaze[idx].lastEnter = null;
+  }
+}
+
+// ── 보정 (Calibration)
+function startCalibration() {
+  const overlay = document.getElementById('calibOverlay');
+  const dotsContainer = document.getElementById('calibDots');
+  dotsContainer.innerHTML = '';
+  overlay.style.display = 'block';
+
+  // WebGazer 시작
+  webgazer.setGazeListener(() => {}).begin().then(() => {
+    webgazer.showVideoPreview(true).showPredictionPoints(false);
+  }).catch(err => {
+    alert('웹캠 접근 실패: ' + err.message);
+    overlay.style.display = 'none';
+  });
+
+  // 9개 보정 점 (3x3 그리드)
+  const positions = [];
+  [0.1, 0.5, 0.9].forEach(y => [0.1, 0.5, 0.9].forEach(x => positions.push([x, y])));
+
+  let clickCount = 0;
+  positions.forEach(([xr, yr], i) => {
+    const dot = document.createElement('div');
+    dot.className = 'calib-dot';
+    dot.style.left = `${xr * 100}%`;
+    dot.style.top  = `${yr * 100}%`;
+    dot.onclick = () => {
+      if (dot.classList.contains('done')) return;
+      dot.classList.add('done');
+      clickCount++;
+      document.getElementById('calibProgress').textContent = `${clickCount} / 9 완료`;
+      if (clickCount >= 9) {
+        setTimeout(() => {
+          overlay.style.display = 'none';
+          webgazer.showVideoPreview(false);
+          calibDone = true;
+          document.getElementById('stCalib').textContent = '완료 ✅';
+          document.getElementById('btnStartTrack').disabled = false;
+          document.getElementById('etBadge').textContent = '● 보정 완료';
+          document.getElementById('etBadge').className = 'et-badge et-cal';
+        }, 500);
+      }
+    };
+    dotsContainer.appendChild(dot);
+  });
+}
+
+// ── 추적 시작/중지
+function startTracking() {
+  if (!calibDone) { alert('먼저 보정을 완료해주세요.'); return; }
+  gazeActive = true;
+  trackStart = Date.now();
+  document.getElementById('stTrack').textContent = '추적 중 🔴';
+  document.getElementById('btnStartTrack').disabled = true;
+  document.getElementById('btnStopTrack').disabled  = false;
+  document.getElementById('etBadge').textContent    = '● 시선추적 ON';
+  document.getElementById('etBadge').className      = 'et-badge et-on';
+  document.getElementById('gazeCursor').style.display = 'block';
+
+  // WebGazer 리스너 등록
+  webgazer.setGazeListener((data) => {
+    if (!data || !gazeActive) return;
+    const { x, y } = data;
+    const cursor = document.getElementById('gazeCursor');
+    cursor.style.left = x + 'px';
+    cursor.style.top  = y + 'px';
+    gazePoints.push({ x, y, t: Date.now() });
+
+    // (x,y) 위치의 요소 찾아 시선 체류 기록
+    const el = document.elementFromPoint(x, y);
+    if (el?.classList.contains('word-span')) {
+      const stem = el.dataset.stem;
+      if (stem && wordGaze[stem] && !wordGaze[stem].lastEnter) {
+        wordGaze[stem].lastEnter = Date.now();
+      }
+      const sidx = parseInt(el.dataset.sidx);
+      if (!isNaN(sidx) && sentenceGaze[sidx] && !sentenceGaze[sidx].lastEnter) {
+        sentenceGaze[sidx].lastEnter = Date.now();
+      }
+    }
+  });
+
+  // 타이머
+  timerInterval = setInterval(() => {
+    const elapsed = Math.round((Date.now() - trackStart) / 1000);
+    document.getElementById('stTime').textContent = elapsed + 's';
+  }, 1000);
+
+  switchTab('read');
+}
+
+function stopTracking() {
+  gazeActive = false;
+  webgazer.setGazeListener(() => {});
+  clearInterval(timerInterval);
+  document.getElementById('stTrack').textContent = '완료';
+  document.getElementById('btnStopTrack').disabled = true;
+  document.getElementById('etBadge').textContent   = '● 시선추적 OFF';
+  document.getElementById('etBadge').className     = 'et-badge et-off';
+  document.getElementById('gazeCursor').style.display = 'none';
+
+  // 미종료 체류 시간 정산
+  Object.entries(wordGaze).forEach(([stem, v]) => {
+    if (v.lastEnter) { v.ms += Date.now() - v.lastEnter; v.lastEnter = null; }
+  });
+  Object.entries(sentenceGaze).forEach(([idx, v]) => {
+    if (v.lastEnter) { v.ms += Date.now() - v.lastEnter; v.lastEnter = null; }
+  });
+
+  drawHeatmap();
+  generateReport();
+  switchTab('report');
+}
+
+function toggleEyeTracking() {
+  if (!calibDone) startCalibration();
+}
+
+// ── 히트맵 그리기
+function drawHeatmap() {
+  const area   = document.getElementById('readingArea');
+  const canvas = document.getElementById('heatmapCanvas');
+  const ctx    = canvas.getContext('2d');
+  canvas.width  = area.offsetWidth;
+  canvas.height = area.offsetHeight;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const areaRect = area.getBoundingClientRect();
+  gazePoints.forEach(pt => {
+    const lx = pt.x - areaRect.left;
+    const ly = pt.y - areaRect.top + area.scrollTop;
+    const grad = ctx.createRadialGradient(lx, ly, 0, lx, ly, 40);
+    grad.addColorStop(0,   'rgba(155,28,28,0.15)');
+    grad.addColorStop(0.5, 'rgba(180,83,9,0.05)');
+    grad.addColorStop(1,   'rgba(0,0,0,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(lx, ly, 40, 0, Math.PI*2);
+    ctx.fill();
+  });
+}
+
+// ── 리포트 생성
+async function generateReport() {
+  document.getElementById('reportPanel').style.display  = 'block';
+  document.getElementById('reportEmpty').style.display  = 'none';
+
+  const elapsed = Math.round((Date.now() - trackStart) / 1000);
+  const wordCount = Object.keys(wordGaze).length;
+  const trackedCount = Object.values(wordGaze).filter(v=>v.ms>0).length;
+
+  // 전체 통계
+  document.getElementById('reportStats').innerHTML = `
+    <div>총 읽기 시간: <span class="val">${elapsed}초</span></div>
+    <div>전체 단어 수: <span class="val">${wordCount}개</span></div>
+    <div>시선 추적된 단어: <span class="val">${trackedCount}개</span></div>
+    <div>평균 단어 체류 시간: <span class="val">${trackedCount>0?(Math.round(Object.values(wordGaze).reduce((s,v)=>s+v.ms,0)/trackedCount))+'ms':'—'}</span></div>
+  `;
+
+  // 단어 TOP 10
+  const wordRank = Object.entries(wordGaze)
+    .filter(([,v]) => v.ms > 100)
+    .sort((a,b) => b[1].ms - a[1].ms)
+    .slice(0, 10);
+  const maxMs = wordRank[0]?.[1]?.ms || 1;
+  const wordRankEl = document.getElementById('wordRankList');
+  wordRankEl.innerHTML = '';
+
+  for (let i=0; i<wordRank.length; i++) {
+    const [stem, v] = wordRank[i];
+    const info = await fetchDict(stem);
+    const item = document.createElement('div');
+    item.className = 'rank-item';
+    const gradeColor = info?.grade==='초급'?'#2d6a4f':info?.grade==='중급'?'#b45309':info?.grade==='고급'?'#9b1c1c':'#888';
+    item.innerHTML = `
+      <div class="rank-n">${i+1}</div>
+      <div class="rank-word" style="color:${gradeColor};">${stem}</div>
+      <div class="rank-bar-wrap"><div class="rank-bar" style="width:${Math.round(v.ms/maxMs*100)}%;background:${gradeColor};"></div></div>
+      <div class="rank-time">${(v.ms/1000).toFixed(1)}s</div>
+      <div style="font-size:10px;color:#888;margin-left:4px;">${info?.grade||'—'}</div>
+    `;
+    wordRankEl.appendChild(item);
+  }
+  if (!wordRank.length) wordRankEl.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:8px;">시선 데이터가 부족합니다. 실제 글을 읽은 후 시도해보세요.</div>';
+
+  // 문장 TOP 5
+  const sentRank = Object.entries(sentenceGaze)
+    .filter(([,v]) => v.ms > 200)
+    .sort((a,b) => b[1].ms - a[1].ms)
+    .slice(0, 5);
+  const sentRankEl = document.getElementById('sentenceRankList');
+  sentRankEl.innerHTML = '';
+  sentRank.forEach(([idx, v], i) => {
+    const item = document.createElement('div');
+    item.className = 'sentence-rank-item' + (i < 2 ? ' hot' : '');
+    const difficulty = v.ms > 3000 ? '⚠️ 어려운 문장으로 추정' : v.ms > 1500 ? '🔶 보통 난이도' : '✅ 쉬운 문장';
+    item.innerHTML = `
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+        <span style="font-size:10px;color:var(--text3);">문장 ${parseInt(idx)+1}</span>
+        <span style="font-size:10px;font-family:'DM Mono',monospace;">${(v.ms/1000).toFixed(1)}s · ${difficulty}</span>
+      </div>
+      <div>${v.text.slice(0, 60)}${v.text.length>60?'…':''}</div>
+    `;
+    sentRankEl.appendChild(item);
+  });
+  if (!sentRank.length) sentRankEl.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:8px;">문장 데이터가 부족합니다.</div>';
+
+  // 인사이트
+  const hardWords = wordRank.filter(([,v]) => v.ms > 2000).map(([s]) => s);
+  const insight = document.getElementById('insightBox');
+  insight.innerHTML = `
+    ${hardWords.length > 0
+      ? `<b>어휘 취약 단어:</b> ${hardWords.slice(0,5).join(', ')} — 이 단어들에서 시선이 오래 머물렀어요. 어휘 학습이 필요할 수 있어요.<br><br>`
+      : '모든 단어에서 시선이 고르게 이동했어요. 전반적인 어휘 이해도가 높습니다.<br><br>'}
+    ${sentRank.length > 0
+      ? `<b>어려운 문장:</b> "${sentRank[0][1].text.slice(0,40)}…" — 이 문장에서 가장 오래 머물렀어요.<br><br>`
+      : ''}
+    <b>활용 제안:</b> 시선이 오래 머문 단어를 클릭하면 즉시 뜻을 확인할 수 있어요. 이 단어들을 단어장에 추가하면 어휘력 향상에 도움이 됩니다.
+  `;
+}
+
+// ── 단어 클릭 팝업
+let hl = null;
+async function onWordClick(stem, e) {
+  if (hl) hl.classList.remove('hl'); hl = e.target; hl.classList.add('hl');
+  const popup = document.getElementById('popup');
+  document.getElementById('p-word').textContent  = stem;
+  document.getElementById('p-grade').textContent = '조회 중';
+  document.getElementById('p-grade').className   = 'popup-grade g-unknown';
+  document.getElementById('p-pos').textContent   = '';
+  document.getElementById('p-def').innerHTML     = '<span class="spinner"></span> 검색 중...';
+  const gazeMs = wordGaze[stem]?.ms || 0;
+  document.getElementById('p-gaze').textContent  = gazeMs > 0 ? `👁 시선 체류: ${(gazeMs/1000).toFixed(1)}초` : '';
+  popup.style.display = 'block';
+  posPopup(e);
+
+  const info = await fetchDict(stem);
+  if (info && info.senses?.length) {
+    document.getElementById('p-grade').textContent = info.grade || '등급없음';
+    document.getElementById('p-grade').className   = 'popup-grade g-' + (info.grade||'unknown');
+    document.getElementById('p-pos').textContent   = info.pos;
+    const s = info.senses[0];
+    document.getElementById('p-def').innerHTML =
+      `<div>${s.def}</div>` + (s.ex ? `<div class="popup-ex">${s.ex}</div>` : '');
+  } else {
+    document.getElementById('p-grade').textContent = '미등록';
+    document.getElementById('p-grade').className   = 'popup-grade g-unknown';
+    document.getElementById('p-def').textContent   = `"${stem}"은 사전에 없는 단어예요.`;
+  }
+  posPopup(e);
+}
+function posPopup(e) {
+  const popup = document.getElementById('popup');
+  const rect  = e.target.getBoundingClientRect();
+  let left = rect.left + window.scrollX;
+  let top  = rect.bottom + window.scrollY + 8;
+  if (left + 320 > window.innerWidth)  left = window.innerWidth - 325;
+  if (top  + 200 > window.innerHeight) top  = rect.top + window.scrollY - 210;
+  popup.style.left = left + 'px';
+  popup.style.top  = top  + 'px';
+}
+function closePopup() {
+  document.getElementById('popup').style.display = 'none';
+  if (hl) { hl.classList.remove('hl'); hl = null; }
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('#popup') && !e.target.classList.contains('word-span')) closePopup();
+});
+</script>
+</body>
+</html>
